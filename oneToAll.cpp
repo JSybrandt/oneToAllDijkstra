@@ -9,6 +9,8 @@
 #include<stack>
 #include<sstream>
 
+#include"pQueue.h"
+
 using namespace std;
 
 const int NUM_RESULTS = 1000;
@@ -61,19 +63,22 @@ void constructGraph(string fileName, graphMap& graph){
 }
 
 vector<string> getPath(string startName, string endName, graphMap& graph){
-  stack<string> stk;
-  string cName = endName;
-  while(cName != startName){
-    stk.push(cName);
-    cName = graph[cName].prevPathNode;
+  if(graph.find(endName) != graph.end()){
+    stack<string> stk;
+    string cName = endName;
+    while(cName != startName){
+      stk.push(cName);
+      cName = graph[cName].prevPathNode;
+    }
+    vector<string> res;
+    res.push_back(startName);
+    while(!stk.empty()){
+      res.push_back(stk.top());
+      stk.pop();
+    }
+    return res;
   }
-  vector<string> res;
-  res.push_back(startName);
-  while(!stk.empty()){
-    res.push_back(stk.top());
-    stk.pop();
-  }
-  return res;
+  return vector<string>();
 }
 
 unordered_set<string> getMoreAbstracts(unordered_set<string> initialAbstracts, graphMap& graph, int resultSize){
@@ -145,15 +150,15 @@ int main (int argc, char** argv){
     string id;
     while(tidFile >> id) endNames.push_back(id);
     tidFile.close();
-    //cerr << "Found TIDS:" << endNames.size() << endl;
+    cerr << "Found TIDS:" << endNames.size() << endl;
 
     graphMap graph;
-    //cerr << "Constructing Graph" << endl;
+    cerr << "Constructing Graph" << endl;
     constructGraph(graphFileName, graph);
-    //cerr << "Found " << graph.size() << " nodes" << endl;
-    //cerr << "Starting Traversal" << endl;
+    cerr << "Found " << graph.size() << " nodes" << endl;
+    cerr << "Starting Traversal" << endl;
     vector<vector<string> > paths = runDijkstra(startName, endNames, graph);
-    //cerr << "Got Paths:" << paths.size() << endl;
+    cerr << "Got Paths:" << paths.size() << endl;
     for(vector<string> path : paths){
       unordered_set<string> abstracts;
       outFile << "PATH: ";
@@ -162,32 +167,38 @@ int main (int argc, char** argv){
           abstracts.insert(name);
         outFile << name << " ";
       }
-      //in this section we are going to try and catch any overlapping abstracts
-      for(int i = 0 ; i < path.size()-1; i++){
-        //get two adjacent path nodes
-        string nodeA = path[i];
-        string nodeB = path[i+1];
-        //if the nodes are both keywords
-        if(nodeA[0] == KEYWORD_MARKER && nodeB[0] == KEYWORD_MARKER){
-          //optimization, check smaller against larger
-          unordered_map<string,float>*  childrenLarge;
-          unordered_map<string,float>*  childrenSmall;
-          if(graph[nodeA].edges.size() < graph[nodeB].edges.size()){
-            childrenLarge = & graph[nodeB].edges;
-            childrenSmall = & graph[nodeA].edges;
-          }else{
-            childrenLarge = & graph[nodeA].edges;
-            childrenSmall = & graph[nodeB].edges;
-          }
-          for(auto pair: *childrenSmall){
-            //if there is a shared abstract between the two
-            if(pair.first[0] == ABSTRACT_MARKER && childrenLarge->find(pair.first) != childrenLarge->end()){
-              abstracts.insert(pair.first);
+      outFile << endl;
+      if(path.size() > 1){
+        //in this section we are going to try and catch any overlapping abstracts
+        cerr << "Getting overlap data for " << path[0] << "->" << path[path.size()-1] << endl;
+        for(int i = 0 ; i < path.size()-1; i++){
+          //get two adjacent path nodes
+          string nodeA = path[i];
+          string nodeB = path[i+1];
+          //if the nodes are both keywords
+          if(nodeA[0] == KEYWORD_MARKER && nodeB[0] == KEYWORD_MARKER){
+            //optimization, check smaller against larger
+            unordered_map<string,float>*  childrenLarge;
+            unordered_map<string,float>*  childrenSmall;
+            if(graph[nodeA].edges.size() < graph[nodeB].edges.size()){
+              childrenLarge = & graph[nodeB].edges;
+              childrenSmall = & graph[nodeA].edges;
+            }else{
+              childrenLarge = & graph[nodeA].edges;
+              childrenSmall = & graph[nodeB].edges;
+            }
+            //we want an upper bound on these abstracts
+            int intersectionCount = 100;
+            for(auto pair: *childrenSmall){
+              //if there is a shared abstract between the two
+              if(intersectionCount > 0 && pair.first[0] == ABSTRACT_MARKER && childrenLarge->find(pair.first) != childrenLarge->end()){
+                abstracts.insert(pair.first);
+                intersectionCount--;
+              }
             }
           }
         }
       }
-      outFile << endl;
       outFile << "RELATED: ";
       for(string abstract : getMoreAbstracts(abstracts, graph, NUM_RESULTS)){
         outFile << abstract << " ";
