@@ -12,10 +12,11 @@ using std::cout;
 using std::endl;
 using std::stack;
 
+template<class K, class V>
 struct pNode{
-  pNode(string n, float w):
-    val(w),
-    name(n),
+  pNode(K k, V v):
+    val(v),
+    key(k),
     left(nullptr),
     right(nullptr),
     parent(nullptr){}
@@ -24,7 +25,6 @@ struct pNode{
     removePointers();
   }
   void removePointers(){
-//cout<<"Erasing:"<<name<<endl;
     if(left)
       left->parent = nullptr;
     if(right)
@@ -36,19 +36,20 @@ struct pNode{
         parent->right = nullptr;
     left = right = parent = nullptr;
   }
-  float val;
-  string name;
-  pNode *left, *right, *parent;
+  V val;
+  K key;
+  pNode<K,V> *left, *right, *parent;
 
 };
 
+template<class K, class V>
 struct pQueue{
   pQueue(){ head = nullptr;}
   ~pQueue(){
-    for(auto p : nameRefs)
+    for(auto p : key2Node)
       delete p.second;
   }
-  pNode* merge(pNode* a, pNode* b){
+  pNode<K,V>* merge(pNode<K,V>* a, pNode<K,V>* b){
     if(!a){
       return b;
     }
@@ -63,50 +64,60 @@ struct pQueue{
     a->right-> parent = a;
     return a;
   }
-  void insert(string name, float val){
-    pNode* node = new pNode(name,val);
-    nameRefs[name] = node;
+  void insert(K key, V val){
+    pNode<K,V>* node = new pNode<K,V>(key,val);
+    key2Node[key] = node;
     head = merge(head,node);
   }
 
-  void del(string name){
-    pNode* node = nameRefs[name];
-    pNode* left = node->left;
-    pNode* right = node->right;
-    if(node == head)
-      head = nullptr;
-    delete node;
-    head = merge(head,merge(left,right));
-    nameRefs.erase(name);
-  }
-  void change(string name, float val){
-    del(name);
-    insert(name, val);
-  }
-  std::pair<string,float> popMin(){
-    if(head){
-      string ret = head->name;
-      float v = head->val;
-      del(ret);
-      return std::make_pair(ret, v);
-    } else {
-      return std::make_pair("",-1);
+  //Push either adds or decreases key
+  void push(K key, V val){
+    if(key2Node.find(key) == key2Node.end()){
+      insert(key,val);
+    }else if(val < key2Node[key]->val){
+      change(key,val);
     }
   }
-  bool isEmpty(){
+
+  void del(K key){
+    if(key2Node.find(key) != key2Node.end()){
+      pNode<K,V>* node = key2Node[key];
+      pNode<K,V>* left = node->left;
+      pNode<K,V>* right = node->right;
+      if(node == head)
+        head = nullptr;
+      delete node;
+      head = merge(head,merge(left,right));
+      key2Node.erase(key);
+    }
+  }
+  void change(K key, V val){
+    del(key);
+    insert(key, val);
+  }
+  std::pair<K,V> pop(){
+    K ret = head->key;
+    V v = head->val;
+    del(ret);
+    return std::make_pair(ret, v);
+  }
+  V top(){
+    return head->val;
+  }
+  bool empty(){
     return head == nullptr;
   }
-  void printStructure(pNode* node, int tabLevel){
+  void printStructure(pNode<K,V>* node, int tabLevel){
     for(int i = 0; i < tabLevel; i++)
       cout <<"\t";
     if(node){
-      cout << node->name << ":" << node->val << endl;
+      cout << node->key << ":" << node->val << endl;
       printStructure(node->left, tabLevel+1);
       printStructure(node->right, tabLevel+1);
     }else{
       cout << "*" << endl;
     }
   }
-  pNode* head;
-  unordered_map<string, pNode*> nameRefs;
+  pNode<K,V>* head;
+  unordered_map<K, pNode<K,V>*> key2Node;
 };

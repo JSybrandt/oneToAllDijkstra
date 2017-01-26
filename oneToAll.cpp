@@ -19,23 +19,21 @@ const char KEYWORD_MARKER = 'C';
 const char SEMANTIC_MARKER = 'T';
 
 struct forwardEdge{
-  forwardEdge(string s, string e, float w):startName(s), endName(e), pathWeight(w){}
-  string startName, endName;
+  forwardEdge(string e, float w):prevName(e), pathWeight(w){}
+  string prevName;
   float pathWeight;
   bool operator<(const forwardEdge& other) const {
-    return this->pathWeight > other.pathWeight;
+    return this->pathWeight < other.pathWeight;
   }
 };
 
 struct graphNode{
-  graphNode():name("NULL"), pathWeight(-1), prevPathNode("NULL"){}
+  graphNode():name("NULL"), prevPathNode("NULL"){}
   graphNode(string n):
     name(n),
-    pathWeight(numeric_limits<float>::max()),
     prevPathNode(n)
   {}
   unordered_map<string,float> edges;
-  float pathWeight;
   string prevPathNode;
   string name;
 };
@@ -81,53 +79,62 @@ vector<string> getPath(string startName, string endName, graphMap& graph){
   return vector<string>();
 }
 
-unordered_set<string> getMoreAbstracts(unordered_set<string> initialAbstracts, graphMap& graph, int resultSize){
-
-  //cerr << "Extending Abstract Set" << endl;
-  unordered_set<string> visitedNodes = initialAbstracts;
-  priority_queue<forwardEdge> q;
-  for(string name:initialAbstracts){
-    q.push(forwardEdge(name,name,0));
+unordered_set<string>& getMoreAbstracts(unordered_set<string>& abstracts, graphMap& graph, int resultSize){
+  pQueue<string, float> q;
+  for(string name:abstracts){
+    q.push(name, 0);
   }
 
-  while(!q.empty() && visitedNodes.size() < resultSize){
-    forwardEdge cEdge = q.top();
-    q.pop();
-    graphNode& cNode = graph[cEdge.endName];
-    visitedNodes.insert(cNode.name);
-    //cerr << "Visiting:" << cNode.name << ":" << cEdge.pathWeight << endl;
+  while(!q.empty() && abstracts.size() < resultSize){
+    pair<string, float>cPair = q.pop();
+
+    string& currName = cPair.first;
+    float pathWeight = cPair.second;
+
+    graphNode& cNode = graph[currName];
+    abstracts.insert(currName);
     for(auto edge : cNode.edges){
       //if the edge points to an abstract we havn't seen before
       if(edge.first[0] == ABSTRACT_MARKER
-          && visitedNodes.find(edge.first) == visitedNodes.end()){
-        q.push(forwardEdge(cNode.name,edge.first,cEdge.pathWeight + edge.second));
+          && abstracts.find(edge.first) == abstracts.end()){
+        q.push(edge.first,pathWeight + edge.second);
       }
     }
   }
-  return visitedNodes;
+  return abstracts;
 }
 
 //runs a 1:n shortest path query all at same time. Returns paths
 vector<vector<string> > runDijkstra(string start, const vector<string>& end, graphMap& graph){
+  cout << "Running Dijkstra's, looking for "<<end.size() << " goals." << endl;
   unordered_set<string> goals;
+  unordered_set<string> visited;
   for(string s : end){
     goals.insert(s);
   }
-  priority_queue<forwardEdge> q;
-  q.push(forwardEdge(start, start, 0));
+
+  pQueue<string,forwardEdge> q;
+  q.push(start,forwardEdge(start, 0));
+  visited.insert(start);
+
   while(!q.empty() && goals.size() > 0){
-    forwardEdge cEdge = q.top();
-    q.pop();
-    //cerr << "Traverse:" << cEdge.endName << ":" << cEdge.pathWeight << endl;
-    graphNode& cNode = graph[cEdge.endName];
-    if(cNode.pathWeight > cEdge.pathWeight){
-      cNode.pathWeight = cEdge.pathWeight;
-      cNode.prevPathNode = cEdge.startName;
-      //update goals
-      goals.erase(cNode.name);
-      for(pair<string,float> edge : cNode.edges){
-        forwardEdge fe(cNode.name, edge.first, edge.second + cNode.pathWeight);
-        q.push(fe);
+    pair<string, forwardEdge> cPair = q.pop();
+
+    string& prevName = cPair.second.prevName;
+    string& currName = cPair.first;
+    float pathWeight = cPair.second.pathWeight;
+
+    graphNode& cNode = graph[currName];
+    cNode.prevPathNode = prevName;
+
+    //update goals
+    goals.erase(cNode.name);
+    visited.insert(currName);
+
+    for(pair<string,float> edge : cNode.edges){
+      if(visited.find(edge.first) == visited.end()){
+        forwardEdge fe(currName, edge.second + pathWeight);
+        q.push(edge.first, fe); //relies on push updating min
       }
     }
   }
@@ -136,6 +143,39 @@ vector<vector<string> > runDijkstra(string start, const vector<string>& end, gra
     paths.push_back(getPath(start, eName, graph));
   }
   return paths;
+}
+
+unordered_set<string>& getOverlapAbstracts(vector<string> path, graphMap& graph, unordered_set<string>& abstracts){
+  //in this section we are going to try and catch any overlapping abstracts
+  //cerr << "Getting overlap data for " << path[0] << "->" << path[path.size()-1] << endl;
+  for(int i = 0 ; i < path.size()-1; i++){
+    //get two adjacent path nodes
+    string nodeA = path[i];
+    string nodeB = path[i+1];
+    //if the nodes are both keywords
+    if(nodeA[0] == KEYWORD_MARKER && nodeB[0] == KEYWORD_MARKER){
+      //optimization, check smaller against larger
+      unordered_map<string,float>*  childrenLarge;
+      unordered_map<string,float>*  childrenSmall;
+      if(graph[nodeA].edges.size() < graph[nodeB].edges.size()){
+        childrenLarge = & graph[nodeB].edges;
+        childrenSmall = & graph[nodeA].edges;
+      }else{
+        childrenLarge = & graph[nodeA].edges;
+        childrenSmall = & graph[nodeB].edges;
+      }
+      //we want an upper bound on these abstracts
+      int intersectionCount = 100;
+      for(auto pair: *childrenSmall){
+        //if there is a shared abstract between the two
+        if(intersectionCount > 0 && pair.first[0] == ABSTRACT_MARKER && childrenLarge->find(pair.first) != childrenLarge->end()){
+          abstracts.insert(pair.first);
+          intersectionCount--;
+        }
+      }
+    }
+  }
+  return abstracts;
 }
 
 int main (int argc, char** argv){
@@ -160,50 +200,25 @@ int main (int argc, char** argv){
     vector<vector<string> > paths = runDijkstra(startName, endNames, graph);
     cerr << "Got Paths:" << paths.size() << endl;
     for(vector<string> path : paths){
-      unordered_set<string> abstracts;
-      outFile << "PATH: ";
-      for(string name : path){
-        if(name[0] == ABSTRACT_MARKER)
-          abstracts.insert(name);
-        outFile << name << " ";
-      }
-      outFile << endl;
       if(path.size() > 1){
-        //in this section we are going to try and catch any overlapping abstracts
-        cerr << "Getting overlap data for " << path[0] << "->" << path[path.size()-1] << endl;
-        for(int i = 0 ; i < path.size()-1; i++){
-          //get two adjacent path nodes
-          string nodeA = path[i];
-          string nodeB = path[i+1];
-          //if the nodes are both keywords
-          if(nodeA[0] == KEYWORD_MARKER && nodeB[0] == KEYWORD_MARKER){
-            //optimization, check smaller against larger
-            unordered_map<string,float>*  childrenLarge;
-            unordered_map<string,float>*  childrenSmall;
-            if(graph[nodeA].edges.size() < graph[nodeB].edges.size()){
-              childrenLarge = & graph[nodeB].edges;
-              childrenSmall = & graph[nodeA].edges;
-            }else{
-              childrenLarge = & graph[nodeA].edges;
-              childrenSmall = & graph[nodeB].edges;
-            }
-            //we want an upper bound on these abstracts
-            int intersectionCount = 100;
-            for(auto pair: *childrenSmall){
-              //if there is a shared abstract between the two
-              if(intersectionCount > 0 && pair.first[0] == ABSTRACT_MARKER && childrenLarge->find(pair.first) != childrenLarge->end()){
-                abstracts.insert(pair.first);
-                intersectionCount--;
-              }
-            }
-          }
+        unordered_set<string> abstracts;
+
+        outFile << "PATH: ";
+        for(string name : path){
+          if(name[0] == ABSTRACT_MARKER)
+            abstracts.insert(name);
+          outFile << name << " ";
         }
+        outFile << endl;
+        abstracts = getMoreAbstracts(abstracts, graph, NUM_RESULTS);
+        abstracts = getOverlapAbstracts(path, graph, abstracts);
+
+        outFile << "RELATED: ";
+        for(string abstract : abstracts){
+          outFile << abstract << " ";
+        }
+        outFile << endl;
       }
-      outFile << "RELATED: ";
-      for(string abstract : getMoreAbstracts(abstracts, graph, NUM_RESULTS)){
-        outFile << abstract << " ";
-      }
-      outFile << endl;
     }
     outFile.close();
   }

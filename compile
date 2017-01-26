@@ -1,4 +1,4 @@
 #!/bin/bash
 module load gcc openmpi
 clear
-g++ *.cpp -fopenmp -O2 -o runDijkstra
+g++ oneToAll.cpp -O3 -o runDijkstra
