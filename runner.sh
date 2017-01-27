@@ -11,7 +11,7 @@ module load gcc openmpi
 
 ID_A=C0038250
 TID_FILE=~/projects/queries/cpp/TIDS
-GRAPH_FILE="/scratch2/jsybran/networkData/graphMinusSemantic.edges"
+GRAPH_FILE="/scratch2/jsybran/FINAL_NETWORK/subgraph.edges"
 OUT_FILE="/scratch2/jsybran/oneToAllResults"
 
 /home/jsybran/projects/queries/cpp/runDijkstra $GRAPH_FILE $TID_FILE $ID_A $OUT_FILE

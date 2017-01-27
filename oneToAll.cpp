@@ -14,7 +14,7 @@
 using namespace std;
 
 const int NUM_RESULTS = 1000;
-const char ABSTRACT_MARKER = 'i';
+//Note: abstracts have integer values 
 const char KEYWORD_MARKER = 'C';
 const char SEMANTIC_MARKER = 'T';
 
@@ -31,7 +31,7 @@ struct graphNode{
   graphNode():name("NULL"), prevPathNode("NULL"){}
   graphNode(string n):
     name(n),
-    prevPathNode(n)
+    prevPathNode("NULL")
   {}
   unordered_map<string,float> edges;
   string prevPathNode;
@@ -61,13 +61,16 @@ void constructGraph(string fileName, graphMap& graph){
 }
 
 vector<string> getPath(string startName, string endName, graphMap& graph){
+  //cerr << "Finding Paths:" << startName << "," << endName << endl;
   if(graph.find(endName) != graph.end()){
     stack<string> stk;
     string cName = endName;
-    while(cName != startName){
+    while(cName != startName && cName != "NULL"){
       stk.push(cName);
       cName = graph[cName].prevPathNode;
     }
+    if(cName ==  "NULL")
+      return vector<string>();
     vector<string> res;
     res.push_back(startName);
     while(!stk.empty()){
@@ -95,7 +98,7 @@ unordered_set<string>& getMoreAbstracts(unordered_set<string>& abstracts, graphM
     abstracts.insert(currName);
     for(auto edge : cNode.edges){
       //if the edge points to an abstract we havn't seen before
-      if(edge.first[0] == ABSTRACT_MARKER
+      if(isdigit(edge.first[0])
           && abstracts.find(edge.first) == abstracts.end()){
         q.push(edge.first,pathWeight + edge.second);
       }
@@ -106,7 +109,7 @@ unordered_set<string>& getMoreAbstracts(unordered_set<string>& abstracts, graphM
 
 //runs a 1:n shortest path query all at same time. Returns paths
 vector<vector<string> > runDijkstra(string start, const vector<string>& end, graphMap& graph){
-  cout << "Running Dijkstra's, looking for "<<end.size() << " goals." << endl;
+  cerr << "Running Dijkstra's, looking for "<<end.size() << " goals." << endl;
   unordered_set<string> goals;
   unordered_set<string> visited;
   for(string s : end){
@@ -123,6 +126,8 @@ vector<vector<string> > runDijkstra(string start, const vector<string>& end, gra
     string& prevName = cPair.second.prevName;
     string& currName = cPair.first;
     float pathWeight = cPair.second.pathWeight;
+
+    //cerr << "Looking @ " << currName << endl;
 
     graphNode& cNode = graph[currName];
     cNode.prevPathNode = prevName;
@@ -146,6 +151,7 @@ vector<vector<string> > runDijkstra(string start, const vector<string>& end, gra
 }
 
 unordered_set<string>& getOverlapAbstracts(vector<string> path, graphMap& graph, unordered_set<string>& abstracts){
+
   //in this section we are going to try and catch any overlapping abstracts
   //cerr << "Getting overlap data for " << path[0] << "->" << path[path.size()-1] << endl;
   for(int i = 0 ; i < path.size()-1; i++){
@@ -168,7 +174,8 @@ unordered_set<string>& getOverlapAbstracts(vector<string> path, graphMap& graph,
       int intersectionCount = 100;
       for(auto pair: *childrenSmall){
         //if there is a shared abstract between the two
-        if(intersectionCount > 0 && pair.first[0] == ABSTRACT_MARKER && childrenLarge->find(pair.first) != childrenLarge->end()){
+        if(intersectionCount > 0 && isdigit(pair.first[0])
+             && childrenLarge->find(pair.first) != childrenLarge->end()){
           abstracts.insert(pair.first);
           intersectionCount--;
         }
@@ -205,7 +212,7 @@ int main (int argc, char** argv){
 
         outFile << "PATH: ";
         for(string name : path){
-          if(name[0] == ABSTRACT_MARKER)
+          if(isdigit(name[0]))
             abstracts.insert(name);
           outFile << name << " ";
         }
@@ -222,6 +229,5 @@ int main (int argc, char** argv){
     }
     outFile.close();
   }
-
   return 0;
 }
